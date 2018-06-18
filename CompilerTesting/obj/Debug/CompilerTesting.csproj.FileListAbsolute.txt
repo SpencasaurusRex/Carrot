@@ -1,0 +1,7 @@
+M:\Dev\Projects\CompilerTesting\CompilerTesting\bin\Debug\CompilerTesting.exe.config
+M:\Dev\Projects\CompilerTesting\CompilerTesting\bin\Debug\CompilerTesting.exe
+M:\Dev\Projects\CompilerTesting\CompilerTesting\bin\Debug\CompilerTesting.pdb
+M:\Dev\Projects\CompilerTesting\CompilerTesting\obj\Debug\CompilerTesting.csprojResolveAssemblyReference.cache
+M:\Dev\Projects\CompilerTesting\CompilerTesting\obj\Debug\CompilerTesting.csproj.CoreCompileInputs.cache
+M:\Dev\Projects\CompilerTesting\CompilerTesting\obj\Debug\CompilerTesting.exe
+M:\Dev\Projects\CompilerTesting\CompilerTesting\obj\Debug\CompilerTesting.pdb
