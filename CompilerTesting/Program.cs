@@ -5,7 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Testing2
+namespace BaseLanguage
 {
 
     class Program
@@ -15,20 +15,22 @@ namespace Testing2
 
         static void Main(string[] args)
         {
-            string file = System.IO.File.ReadAllText(FILE_PATH);
+            while (true)
             {
+                string file = System.IO.File.ReadAllText(FILE_PATH);
                 Tokenizer tokenizer = new Tokenizer(file);
-                foreach (var token in tokenizer.GetTokens())
+                // TODO: Fix split
+                Parser parser = new Parser(tokenizer, file.Split('\n'));
+                var functions = parser.Parse();
+                var transpiledLua = new StringBuilder();
+                foreach (var function in functions)
                 {
-                    Console.WriteLine(token.text);
+                    LuaTranspile.Transpiler.Function(transpiledLua, function, 0);
                 }
-            }
-            Console.ReadKey();
-            {
-                Tokenizer tokenizer = new Tokenizer(file);
-                Parser parser = new Parser(tokenizer);
-                parser.Parse();
+                Console.WriteLine(transpiledLua.ToString());
+
                 Console.ReadKey();
+                Console.Clear();
             }
         }
     }

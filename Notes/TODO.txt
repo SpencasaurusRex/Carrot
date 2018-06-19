@@ -1,0 +1,6 @@
+Things I might work on today
+    - Better error messages
+    - Lexical anaylsis
+    - ECS
+
+    - ARA Design?

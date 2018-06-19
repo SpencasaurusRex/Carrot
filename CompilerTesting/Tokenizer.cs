@@ -5,7 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Testing2
+namespace BaseLanguage
 {
     public enum TokenType
     {
@@ -173,11 +173,15 @@ namespace Testing2
 
         public readonly TokenType type;
         public readonly string text;
+        public readonly int lineNumber;
+        public readonly int index;
 
-        public Token(TokenType type, string text)
+        public Token(TokenType type, string text, int lineNumber, int index)
         {
             this.type = type;
             this.text = text;
+            this.lineNumber = lineNumber;
+            this.index = index;
         }
 
         public int Precedence
@@ -209,6 +213,8 @@ namespace Testing2
         public bool EOF;
 
         int index;
+        int startingIndex;
+        int currentLine = 1;
         char[] file;
         StringBuilder buffer = new StringBuilder();
         Token currentToken;
@@ -218,8 +224,16 @@ namespace Testing2
             this.file = file.ToCharArray();
         }
 
+        // TODO: Do we even want this?
+        public void Reset()
+        {
+            currentLine = 1;
+            index = 0;
+        }
+
         public Token GetToken()
         {
+            startingIndex = index;
             if (index == file.Length)
             {
                 if (tokens.Count > 0 && EOF)
@@ -228,7 +242,7 @@ namespace Testing2
                 }
                 else
                 {
-                    Token t = new Token(TokenType.EOF, "");
+                    Token t = new Token(TokenType.EOF, "", currentLine, index);
                     tokens.Add(t);
                     EOF = true;
                     return t;
@@ -300,13 +314,23 @@ namespace Testing2
 
         void EatWhitespace()
         {
-            BasicRead(WHITESPACE);
+            while (index < file.Length && WHITESPACE.IndexOf(Peek()) >= 0)
+            {
+                var c = Next();
+                buffer.Append(c);
+                if (c == '\n')
+                {
+                    currentLine++;
+                }
+            }
+            string s = buffer.ToString();
+            buffer.Clear();
         }
 
         void AddToken(TokenType type, string text)
         {
             // TODO: More assertions
-            currentToken = new Token(type, text);
+            currentToken = new Token(type, text, currentLine, startingIndex);
             tokens.Add(currentToken);
         }
 

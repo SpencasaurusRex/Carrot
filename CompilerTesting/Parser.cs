@@ -2,9 +2,10 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using CompilerTesting;
+using System.Text;
+using LuaTranspile;
 
-namespace Testing2
+namespace BaseLanguage
 {
     #region Expression/Statement Classes
     public interface Expression { }
@@ -25,7 +26,7 @@ namespace Testing2
     public class LiteralString : Expression
     {
         public readonly string value;
-        public LiteralString(string value){ this.value = value; }
+        public LiteralString(string value) { this.value = value; }
     }
 
     public class Computation : Expression
@@ -93,13 +94,22 @@ namespace Testing2
     public class Assignment : Statement
     {
         public readonly string identifier;
-        public readonly Token assignment;
+        public readonly Token operation;
         public readonly Expression expression;
 
         public Assignment(string identifier, Token assignment, Expression expression)
         {
             this.identifier = identifier;
-            this.assignment = assignment;
+            this.operation = assignment;
+            this.expression = expression;
+        }
+    }
+
+    public class Return : Statement
+    {
+        public readonly Expression expression;
+        public Return(Expression expression)
+        {
             this.expression = expression;
         }
     }
@@ -131,10 +141,23 @@ namespace Testing2
         }
     }
 
+    public class ParseException : Exception
+    {
+        public readonly Token token;
+
+        public ParseException(Token token, string message)
+            : base(message)
+        {
+            this.token = token;
+        }
+    }
+
     public class Parser
     {
         int index;
         Tokenizer tokenizer;
+        string[] lines;
+        Token lastToken;
 
         bool LoadAhead(int toIndex)
         {
@@ -147,6 +170,7 @@ namespace Testing2
 
         Token Next()
         {
+            
             LoadAhead(index);
             return tokenizer.tokens[index++];
         }
@@ -159,14 +183,10 @@ namespace Testing2
             return tokenizer.tokens[peekIndex];
         }
 
-        public Parser(Tokenizer tokenizer)
+        public Parser(Tokenizer tokenizer, string[] lines)
         {
             this.tokenizer = tokenizer;
-        }
-
-        void Error(Token t, string message)
-        {
-            Console.WriteLine("Error: " + message);
+            this.lines = lines;
         }
 
         LiteralString ParseLiteralString()
@@ -192,11 +212,9 @@ namespace Testing2
             Debug.Assert(token.type == TokenType.SymbolParenthesesOpen, "Expected (");
 
             var expression = ParseExpression();
-            if (expression == null) return null;
             if (Peek().type != TokenType.SymbolParenthesesClose)
             {
-                Error(Peek(), "expected ')'");
-                return null;
+                throw new ParseException(Peek(), "expected ')'");
             }
             Next();
             return expression;
@@ -210,27 +228,18 @@ namespace Testing2
             var arguments = new List<Expression>();
             while (Peek().type != TokenType.SymbolParenthesesClose)
             {
-                var arg = ParseExpression();
-                if (arg == null)
+                arguments.Add(ParseExpression());
+                if (Peek().type == TokenType.SymbolParenthesesClose)
                 {
-                    // Expected expression
-                    return null;
+                    break;
+                }
+                else if (Peek().type == TokenType.SymbolComma)
+                {
+                    Next();
                 }
                 else
                 {
-                    arguments.Add(arg);
-                    if (Peek().type == TokenType.SymbolParenthesesClose)
-                    {
-                        break;
-                    }
-                    else if (Peek().type == TokenType.SymbolComma)
-                    {
-                        Next();
-                    }
-                    else
-                    {
-                        Error(Peek(), "Expected ')' or ',' in argument list");
-                    }
+                    throw new ParseException(Peek(), "Expected ')' or ',' in argument list");
                 }
             }
             Next(); // Eat close parentheses
@@ -262,6 +271,10 @@ namespace Testing2
             {
                 return ParseIfStatement();
             }
+            else if (token.type == TokenType.KeywordReturn)
+            {
+                return ParseReturn();
+            }
             else if (Token.IsAssignment(Peek(1)))
             {
                 return ParseAssignment();
@@ -276,8 +289,7 @@ namespace Testing2
             }
             else
             {
-                Error(token, "Unexpected token, expecting statement");
-                return null;
+                throw new ParseException(token, "Unexpected token '" + token.text + "' expecting statement");
             }
         }
 
@@ -290,8 +302,7 @@ namespace Testing2
             var token = Peek();
             if (token.type != TokenType.SymbolSemicolon)
             {
-                Error(token, "Expecting ';'");
-                return null;
+                throw new ParseException(token, "Expecting ';'");
             }
             Next();
             return functionCall;
@@ -310,18 +321,13 @@ namespace Testing2
             {
                 Next();
                 var expression = ParseExpression();
-                if (expression == null)
-                {
-                    return null;
-                }
 
                 token = Peek();
                 if (token.type != TokenType.SymbolSemicolon)
                 {
-                    Error(token, "Expecting ';'");
-                    return null;
+                    throw new ParseException(token, "Expecting ';'");
                 }
-                Next(); 
+                Next();
 
                 return new Declaration(typeToken, identifier.text, expression);
             }
@@ -332,8 +338,7 @@ namespace Testing2
             }
             else
             {
-                Error(token, "Unexpected token");
-                return null;
+                throw new ParseException(token, "Expecting ';' or assignment");
             }
         }
 
@@ -344,15 +349,11 @@ namespace Testing2
         //    Debug.Assert(token.type == TokenType.KeywordIf, "Expected if");
 
         //    var expression = ParseExpression();
-        //    if (expression == null)
-        //    {
-        //        return null;
-        //    }
 
         //    token = Peek();
         //    if (token.type != TokenType.SymbolBraceOpen)
         //    {
-        //        Error(token, "Expected '{' for if statement body");
+        //        throw new ParseException(token, "Expected '{' for if statement body");
         //        return null;
         //    }
 
@@ -369,16 +370,11 @@ namespace Testing2
             Debug.Assert(token.type == TokenType.KeywordIf, "Expected if");
 
             var condition = ParseExpression();
-            if (condition == null)
-            {
-                return null;
-            }
 
             token = Peek();
             if (token.type != TokenType.SymbolBraceOpen)
             {
-                Error(token, "Expected '{' for if statement body");
-                return null;
+                throw new ParseException(token, "Expected '{' for if statement body");
             }
             Next();
 
@@ -386,10 +382,6 @@ namespace Testing2
             while (Peek().type != TokenType.SymbolBraceClose)
             {
                 Statement statement = ParseStatement();
-                if (statement == null)
-                {
-                    return null;
-                }
                 statements.Add(statement);
             }
             Next();
@@ -407,18 +399,13 @@ namespace Testing2
                     // else
                     if (Peek().type != TokenType.SymbolBraceOpen)
                     {
-                        Error(Peek(), "Expecting '{' for else body");
+                        throw new ParseException(Peek(), "Expecting '{' for else body");
                     }
                     Next();
                     var elseStatements = new List<Statement>();
                     while (Peek().type != TokenType.SymbolBraceClose)
                     {
-                        var statement = ParseStatement();
-                        if (statement == null)
-                        {
-                            return null;
-                        }
-                        elseStatements.Add(statement);
+                        elseStatements.Add(ParseStatement());
                     }
                     Next();
                     elseStatement = new If(null, elseStatements);
@@ -430,6 +417,23 @@ namespace Testing2
                 // No else
                 return new If(condition, statements);
             }
+        }
+
+        Return ParseReturn()
+        {
+            var token = Next();
+            Debug.Assert(token.type == TokenType.KeywordReturn, "Expecting 'return'");
+
+            var expression = ParseExpression();
+
+            token = Peek();
+            if (token.type != TokenType.SymbolSemicolon)
+            {
+                throw new ParseException(token, "Expecting ';' to return statement");
+            }
+            Next();
+
+            return new Return(expression);
         }
 
         Expression ParsePrimaryExpression()
@@ -448,18 +452,13 @@ namespace Testing2
 
                 // TODO: Handle unary operators
                 default:
-                    Error(token, "Unkown token when expecting an expression");
-                    return null;
+                    throw new ParseException(token, "Unkown token when expecting an expression");
             }
         }
 
         Expression ParseExpression()
         {
             var primary = ParsePrimaryExpression();
-            if (primary == null)
-            {
-                return null;
-            }
             return ParseComputationRight(0, primary);
         }
 
@@ -474,20 +473,12 @@ namespace Testing2
                 var firstToken = token;
                 Next();
                 var right = ParsePrimaryExpression();
-                if (right == null)
-                {
-                    return null;
-                }
 
                 token = Peek();
                 int nextTokenPrecedence = token.Precedence;
                 if (tokenPrecedence < nextTokenPrecedence)
                 {
                     right = ParseComputationRight(tokenPrecedence + 1, right);
-                    if (right == null)
-                    {
-                        return null;
-                    }
                 }
 
                 left = new Computation(left, firstToken, right);
@@ -498,22 +489,19 @@ namespace Testing2
         {
             var identifier = Next();
             Debug.Assert(identifier.type == TokenType.Identifier, "Expected identifier for assignment");
+
             var assignment = Next();
             Debug.Assert(Token.IsAssignment(assignment), "Expected assignment token");
+
             Expression expression = null;
             if (assignment.type == TokenType.OperatorAssignment)
             {
                 expression = ParseExpression();
-                if (expression == null)
-                {
-                    return null;
-                }
             }
             var token = Peek();
             if (token.type != TokenType.SymbolSemicolon)
             {
-                Error(token, "Expecting semicolon");
-                return null;
+                throw new ParseException(token, "Expecting semicolon");
             }
             Next();
             return new Assignment(identifier.text, assignment, expression);
@@ -533,8 +521,7 @@ namespace Testing2
             token = Peek();
             if (token.type != TokenType.Identifier)
             {
-                Error(token, "Expected name for function prototype");
-                return null;
+                throw new ParseException(token, "Expected name for function prototype");
             }
             string name = token.text;
 
@@ -542,14 +529,13 @@ namespace Testing2
             token = Peek();
             if (token.type != TokenType.SymbolParenthesesOpen)
             {
-                Error(token, "Expected '(' for function prototype");
-                return null;
+                throw new ParseException(token, "Expected '(' for function prototype");
             }
             Next();
 
             // TODO: Get types
             var arguments = new List<string>();
-            while (Peek().type == TokenType.Identifier || Peek().type == TokenType.SymbolComma)
+            while (Peek().type == TokenType.Identifier || Token.IsPrimitive(Peek()))
             {
                 token = Next();
                 if (token.type == TokenType.SymbolComma)
@@ -562,7 +548,7 @@ namespace Testing2
             token = Peek();
             if (token.type != TokenType.SymbolParenthesesClose)
             {
-                Error(token, "Expected ')' for function prototype");
+                throw new ParseException(token, "Expected ')' after argument list");
             }
             Next();
 
@@ -572,15 +558,10 @@ namespace Testing2
         Function ParseFunction()
         {
             var prototype = ParseFunctionPrototype();
-            if (prototype == null)
-            {
-                return null;
-            }
             var token = Peek();
             if (token.type != TokenType.SymbolBraceOpen)
             {
-                Error(token, "Expected '{' for function body");
-                return null;
+                throw new ParseException(token, "Expected '{' for function body");
             }
             Next();
             // Get all the expressions in the body
@@ -588,35 +569,44 @@ namespace Testing2
             while (Peek().type != TokenType.SymbolBraceClose)
             {
                 var statement = ParseStatement();
-                if (statement == null)
-                {
-                    return null;
-                }
                 statements.Add(statement);
             }
             token = Peek();
             if (token.type != TokenType.SymbolBraceClose)
             {
-                Error(token, "Expected '}' to clost function body");
-                return null;
+                throw new ParseException(token, "Expected '}' to close function body");
             }
             Next();
             return new Function(prototype, statements);
         }
 
-        public void Parse()
+        // TODO: Move this to a stream based system?
+        public List<Function> Parse()
         {
+            var functions = new List<Function>();
             while (true)
             {
                 var token = Peek();
                 if (token.type == TokenType.EOF)
                 {
-                    return;
+                    return functions;
                 }
-                else
+                else //
                 {
-                    var func = ParseFunction();
-                    Printer.PrettyPrint(func, 0);
+                    try
+                    {
+                        // TODO: Think about how error recovery would be possible
+                        functions.Add(ParseFunction());
+                    }
+                    catch (ParseException ex)
+                    {
+                        // TODO: Add file name
+                        Console.WriteLine("Error on line " + ex.token.lineNumber);
+                        Console.WriteLine(ex.Message);
+                        Console.WriteLine(lines[ex.token.lineNumber - 1]);
+                        // TODO: Arrow point to token start
+                        return functions;
+                    }
                 }
             }
         }
